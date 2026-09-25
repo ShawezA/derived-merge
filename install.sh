@@ -41,7 +41,7 @@ git config merge.derived.driver "python3 '$DRIVER' %O %A %B %L %P"
 git config merge.derived.recursive text
 
 ATTR="$REPO_ROOT/.gitattributes"
-PATTERNS="package-lock.json deno.lock composer.lock"
+PATTERNS="package-lock.json yarn.lock deno.lock composer.lock"
 
 added=0
 for pattern in $PATTERNS; do

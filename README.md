@@ -126,8 +126,8 @@ driver. That is the main open work.
 
 ## Limits
 
-- **JSON only.** `yarn.lock` (v1) and `pnpm-lock.yaml` are not JSON and are not
-  handled yet. `yarn.lock` is the single most valuable format not covered.
+- **`pnpm-lock.yaml` is not handled.** It is real YAML and needs a YAML
+  parser; `yarn.lock` (both dialects) and JSON lockfiles are covered.
 - **Lists are keyed by identity.** Elements that are objects are lined up by
   the first of `name`/`id`/`key`/`path`/`package`/`url`/`specifier` they
   carry; otherwise by full content. A list of objects with no such field, where
@@ -142,10 +142,11 @@ driver. That is the main open work.
 ## Tests
 
 ```sh
-python3 tests/test_merge3.py
+python3 tests/test_merge3.py    # 29 cases -- the merge decision procedure
+python3 tests/test_yarnlock.py  # 17 cases -- yarn.lock parse/serialize/merge
 ```
 
-29 cases, covering the identity-keyed union claim, deletion semantics, the
+The core suite is 29 cases, covering the identity-keyed union claim, deletion semantics, the
 `0`/`False`/`0.0` collapse (Python's `==` on containers treats
 `{"flag": 0}` and `{"flag": False}` as equal, which silently loses a flag
 change — the equality here is deep and type-strict for that reason), type
