@@ -32,6 +32,36 @@ the other's. A structural merge keeps both.
 So the rule is: **partition by provability.** Union what is provably
 unambiguous, conflict on the rest, and never guess in between.
 
+## Measured on real history
+
+150 three-way merges reconstructed from `npm/cli`'s own `package-lock.json`
+history — consecutive lockfile-touching commits treated as two branches from a
+common base, which is the "two developers branch from main" shape:
+
+| | clean | conflict |
+|---|---|---|
+| git textual merge | 126 | **24** |
+| derived-merge | 147 | **3** |
+
+**21 of git's 24 conflicts resolved (87.5%).** The 3 remaining are genuine
+disagreements — an npm 6.14.8 → 7.0.0 major bump, where refusing to pick a side
+is the correct behaviour.
+
+Correctness was checked separately, because "resolved" is worthless if it means
+"silently wrong": across all cleanly-merged cases, **0 leaf values lost from
+either side and 0 invented**. The checker is itself tested against deliberately
+corrupted merges — it detects a dropped addition, a silently rewritten version,
+and an invented entry.
+
+For scale, the only published field measurement of structured merge on *source
+code* is Mergiraf against the Linux kernel's merge history: 428 of 6,987
+conflicts, **5.8%**. The gap is the whole argument for targeting derived files
+— structure is provably load-bearing in a lockfile and merely heuristic in a C
+file.
+
+Caveat: these are reconstructed pairs, not observed parallel branches. The file
+contents are real; the branch topology is synthesised.
+
 ## What it decides, and what it refuses
 
 Resolved automatically:
