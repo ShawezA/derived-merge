@@ -54,8 +54,13 @@ base, the "two developers branch from main" shape:
 | git textual merge | 126 | **24** |
 | derived-merge | 147 | **3** |
 
-**21 of git's 24 conflicts resolved.** The 3 that remain are a genuine
-npm 6.14.8 → 7.0.0 major bump, where refusing to pick a side is correct.
+**21 of git's 24 conflicts resolved**, and it never conflicts where git was
+clean. The 3 that remain are genuine two-sided disagreements about the same
+key, which is exactly what should not be resolved automatically:
+
+- one branch deleted a nested dependency while the other modified it
+- `10.0.0-pre.1` versus `10.0.0` — a release/prerelease split
+- two different bumps of the same devDependency (`4.21.2` vs `4.21.3`)
 
 Correctness was checked separately, because "resolved" is worthless if it means
 "silently wrong": across every cleanly-merged case, **0 values lost from either
@@ -98,8 +103,8 @@ git's ordinary conflict, exactly as if this weren't installed.
 - `deno.lock`
 - any other identity-keyed JSON you point it at
 
-Verified to reproduce React's 17,724-line v1 lockfile and cal.com's
-42,405-line berry lockfile **byte for byte**, because a serializer that
+Verified to reproduce React's 17,724-line v1 lockfile (2,388 entries) and
+cal.com's 42,405-line berry lockfile (3,936 entries) **byte for byte**, because a serializer that
 reformats would produce a whole-file diff worse than the conflict it removed.
 
 `pnpm-lock.yaml` is not supported yet — it's real YAML and needs a YAML parser.
