@@ -1,0 +1,39 @@
+{
+  "name": "derived-merge",
+  "version": "0.1.0",
+  "description": "Git merge driver for lockfiles. Two branches each adding a dependency stop conflicting.",
+  "keywords": [
+    "git",
+    "merge",
+    "merge-driver",
+    "lockfile",
+    "package-lock",
+    "yarn.lock",
+    "conflict",
+    "monorepo"
+  ],
+  "license": "MIT",
+  "bin": {
+    "derived-merge": "bin/derived-merge.js"
+  },
+  "main": "lib/merge3.js",
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "test": "node tests/run.js"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShawezA/derived-merge.git"
+  }
+}

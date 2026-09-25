@@ -1,11 +1,39 @@
 # derived-merge
 
-A git merge driver for lockfiles and other identity-keyed generated files.
+Lockfile merge conflicts, gone.
 
-Two branches each add a dependency. Neither touched the other's. Git reports a
-conflict anyway, because git merges lines and a lockfile is not lines — it is a
-map. This resolves that class of conflict structurally, and refuses to guess
-about anything else.
+```sh
+npm install --save-dev derived-merge
+```
+
+That's it. No config, no setup step, no per-developer instructions. Your
+teammates get it the next time they run `npm install`.
+
+## The problem
+
+You and a colleague both branch from `main`.
+
+- You run `npm install lodash`. `package-lock.json` changes.
+- They run `npm install axios`. `package-lock.json` changes.
+- You merge.
+
+```
+CONFLICT (content): Merge conflict in package-lock.json
+```
+
+Nothing about that conflict is real. You added lodash, they added axios,
+neither of you touched the other's entry. Git flags it because **git merges
+lines**, and in a lockfile your new entry and theirs happened to land next to
+each other alphabetically.
+
+So you hand-edit a 15,000-line generated file that no human is supposed to
+read, or you delete it and regenerate and hope you didn't silently drop their
+dependency.
+
+## What this does
+
+It teaches git that a lockfile isn't lines — it's a **map** from package to
+version.
 
 ```
 $ git merge feature-a
@@ -13,54 +41,27 @@ derived-merge: package-lock.json: merged cleanly
 Merge made by the 'ort' strategy.
 ```
 
-Without the driver, that exact merge is a conflict.
+Both dependencies present. No markers. Nothing regenerated.
 
-## The idea
-
-Most of a lockfile is an **identity-keyed map with deterministic values** —
-`name@version` → integrity hash, url → hash. A given key always maps to the
-same value regardless of which branch wrote it, so a conflict in those regions
-is *spurious* and the correct merge is a union. Only the regions where two
-branches can genuinely disagree need a conflict.
-
-That framing is the Deno team's, from the `deno.lock` merge support they
-shipped in June 2026. It is better than the obvious alternative ("never merge a
-generated file, regenerate it instead") because regeneration discards work:
-re-running the package manager picks one side's resolution and silently drops
-the other's. A structural merge keeps both.
-
-So the rule is: **partition by provability.** Union what is provably
-unambiguous, conflict on the rest, and never guess in between.
-
-## Measured on real history
+### Measured on real history
 
 150 three-way merges reconstructed from `npm/cli`'s own `package-lock.json`
-history — consecutive lockfile-touching commits treated as two branches from a
-common base, which is the "two developers branch from main" shape:
+history — consecutive lockfile commits treated as two branches from a common
+base, the "two developers branch from main" shape:
 
 | | clean | conflict |
 |---|---|---|
 | git textual merge | 126 | **24** |
 | derived-merge | 147 | **3** |
 
-**21 of git's 24 conflicts resolved (87.5%).** The 3 remaining are genuine
-disagreements — an npm 6.14.8 → 7.0.0 major bump, where refusing to pick a side
-is the correct behaviour.
+**21 of git's 24 conflicts resolved.** The 3 that remain are a genuine
+npm 6.14.8 → 7.0.0 major bump, where refusing to pick a side is correct.
 
 Correctness was checked separately, because "resolved" is worthless if it means
-"silently wrong": across all cleanly-merged cases, **0 leaf values lost from
-either side and 0 invented**. The checker is itself tested against deliberately
-corrupted merges — it detects a dropped addition, a silently rewritten version,
-and an invented entry.
-
-For scale, the only published field measurement of structured merge on *source
-code* is Mergiraf against the Linux kernel's merge history: 428 of 6,987
-conflicts, **5.8%**. The gap is the whole argument for targeting derived files
-— structure is provably load-bearing in a lockfile and merely heuristic in a C
-file.
-
-Caveat: these are reconstructed pairs, not observed parallel branches. The file
-contents are real; the branch topology is synthesised.
+"silently wrong": across every cleanly-merged case, **0 values lost from either
+side, 0 invented**. The checker is itself tested against deliberately corrupted
+merges — it catches a dropped addition, a rewritten version, and an invented
+entry.
 
 ## What it decides, and what it refuses
 
@@ -68,87 +69,111 @@ Resolved automatically:
 
 | Situation | Result |
 |---|---|
-| Both branches added different packages | Union |
+| Both branches added different packages | Both kept |
 | Both branches added the same package identically | Not a disagreement at all |
 | One branch changed an entry, the other didn't | Take the change |
-| One branch deleted an entry, the other didn't touch it | Deletion wins |
-| Branches edited *different fields* of the same entry | Merge both edits |
+| One branch removed an entry, the other didn't touch it | Removal wins |
+| Branches edited *different fields* of one entry | Both edits applied |
 
-Reported as conflicts, with a JSON path rather than a line number:
+Refused, with a path instead of a line number:
 
 ```
-derived-merge: package-lock.json: 2 unresolved:
+derived-merge: package-lock.json: 1 unresolved:
   packages.lodash.version: both sides changed this to a different value
       ours:   "4.17.21"
       theirs: "4.18.0"
 ```
 
-Two branches that genuinely disagree about a version *are* a disagreement, and
-this tool will not pick one. That is the whole safety argument: the research on
-structured merge is consistent that reducing spurious conflicts buys you
-undetected ones, and a silently-wrong lockfile is worse than a noisy one.
+That refusal is the important half. Two branches that genuinely disagree about
+a version *are* a disagreement, and a tool that quietly picked a winner would
+be worse than the conflict it replaced.
 
-If any of the three inputs is not valid JSON, the driver exits non-zero without
-writing anything, and you get git's ordinary conflict. It never half-writes.
+If any input isn't parseable, it writes nothing and exits non-zero — you get
+git's ordinary conflict, exactly as if this weren't installed.
 
-## Install
+## Supported files
+
+- `package-lock.json`, `npm-shrinkwrap.json`
+- `yarn.lock` — both v1 ("classic") and v2+ ("berry")
+- `deno.lock`
+- any other identity-keyed JSON you point it at
+
+Verified to reproduce React's 17,724-line v1 lockfile and cal.com's
+42,405-line berry lockfile **byte for byte**, because a serializer that
+reformats would produce a whole-file diff worse than the conflict it removed.
+
+`pnpm-lock.yaml` is not supported yet — it's real YAML and needs a YAML parser.
+
+## Why npm, and why this actually reaches your team
+
+Git has a defect here that's worth knowing about, because it's the reason
+nobody has solved this before with a merge driver.
+
+**A merge driver's definition lives in `.git/config` and is never distributed
+with the repository.** `.gitattributes` can only *request* a driver by name,
+not supply it. And when a repo asks for a driver that isn't registered, git's
+`find_ll_merge_driver()` falls back to a plain textual merge with **no warning
+and no error** — the policy silently doesn't run, and nothing tells anyone.
+
+That's why every package manager that tackled lockfile merging did it inside
+its own parser instead: npm has an undocumented three-way merge in
+`@npmcli/parse-conflict-json`; pnpm picks a side by recency and admits it
+"cannot guarantee pnpm will choose the correct head"; Cargo's issue asking for
+this has been open since **2015**.
+
+Shipping on npm fixes it. As a devDependency with a `postinstall` hook, the
+driver registers itself for everyone who installs the repo's dependencies —
+which is everyone, already, as part of their normal workflow. The package
+manager *is* the distribution channel.
+
+Manual install, if you'd rather:
 
 ```sh
-git clone https://github.com/<you>/derived-merge
-cd /path/to/your/repo
-sh /path/to/derived-merge/install.sh
-git add .gitattributes && git commit -m "use structural merge for lockfiles"
+npx derived-merge init
 ```
 
-Requires `python3`. No other dependencies.
+## How it works
 
-## The distribution problem, stated plainly
+Most of a lockfile is an **identity-keyed map with deterministic values** —
+`name@version` → integrity hash, url → hash. A given key always maps to the
+same value regardless of which branch wrote it, so a conflict in those regions
+is *spurious* and the correct merge is a union. Only the regions where two
+branches can genuinely disagree need a conflict.
 
-**Every contributor must run `install.sh` themselves.** A merge driver's
-definition lives in `.git/config` and is never distributed with the repository
-— `.gitattributes` can only *request* a driver by name, not supply it.
+That framing comes from the Deno team's `deno.lock` merge support (June 2026).
+It beats the obvious alternative — "never merge a generated file, just
+regenerate it" — because regeneration discards work: re-running the package
+manager picks one side's resolution and silently drops the other's.
 
-It is worse than it sounds. When a repo ships `package-lock.json merge=derived`
-and the driver is not registered, git's `find_ll_merge_driver()` falls back to
-a plain textual merge with **no warning and no error**. The repo asks for a
-policy, the policy silently does not run, and nothing tells anyone.
-
-This is not a limitation of this tool; it is why *every* package manager that
-solved lockfile merging did it inside its own parser instead of as a merge
-driver. npm has an undocumented semantic three-way merge in
-`@npmcli/parse-conflict-json`. pnpm picks a side by recency and admits it
-"cannot guarantee pnpm will choose the correct head". Cargo's issue asking for
-this has been open since 2015. Perforce gets this right — `p4 typemap` puts
-per-path policy on the *server*, so it reaches every client automatically.
-
-Fixing it properly means shipping a self-installing binary rather than a
-driver. That is the main open work.
-
-## Limits
-
-- **`pnpm-lock.yaml` is not handled.** It is real YAML and needs a YAML
-  parser; `yarn.lock` (both dialects) and JSON lockfiles are covered.
-- **Lists are keyed by identity.** Elements that are objects are lined up by
-  the first of `name`/`id`/`key`/`path`/`package`/`url`/`specifier` they
-  carry; otherwise by full content. A list of objects with no such field, where
-  both sides edit the same element, is keyed by content and will not merge as
-  cleanly.
-- **Order is not preserved across a merge of two reordered lists.** Output
-  follows ours' order, then appends what theirs added.
-- **No semantic validation.** A structurally clean merge can still produce a
-  dependency set that does not install. This tool merges the file; it does not
-  run your package manager.
+The rule, in one line: **partition by provability.** Union what is provably
+unambiguous, conflict on the rest, never guess in between.
 
 ## Tests
 
 ```sh
-python3 tests/test_merge3.py    # 29 cases -- the merge decision procedure
-python3 tests/test_yarnlock.py  # 17 cases -- yarn.lock parse/serialize/merge
+npm test
 ```
 
-The core suite is 29 cases, covering the identity-keyed union claim, deletion semantics, the
-`0`/`False`/`0.0` collapse (Python's `==` on containers treats
-`{"flag": 0}` and `{"flag": False}` as equal, which silently loses a flag
-change — the equality here is deep and type-strict for that reason), type
-changes, and the guarantee that a conflicted merge still leaves a complete,
-parseable document.
+24 cases, including the two real bugs found while building this — each still
+fails if its fix is removed:
+
+- Equality delegated to the language's `==`, under which `{flag: 0}` and
+  `{flag: false}` compare equal. A type guard on the outer value was bypassed
+  one level down, so a branch that changed a flag looked like one that changed
+  nothing. Equality is now deep and type-strict.
+- List elements were keyed by content, so two branches editing *different
+  fields* of the same entry produced two copies of it. Elements are now keyed
+  by identity field where one exists.
+
+## Limits
+
+- `pnpm-lock.yaml` unsupported (needs a YAML parser).
+- List order isn't preserved across a merge of two reordered lists; output
+  follows ours, then appends what theirs added.
+- No semantic validation. A structurally clean merge can still produce a
+  dependency set that doesn't install. This merges the file; it doesn't run
+  your package manager.
+
+## License
+
+MIT
