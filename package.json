@@ -13,6 +13,7 @@
     "monorepo"
   ],
   "license": "MIT",
+  "author": "Sunken Rock",
   "bin": {
     "derived-merge": "bin/derived-merge.js"
   },
@@ -27,13 +28,13 @@
   "engines": {
     "node": ">=14"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShawezA/derived-merge.git"
+  },
   "scripts": {
     "postinstall": "node scripts/postinstall.js",
     "test": "node tests/run.js"
   },
-  "dependencies": {},
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ShawezA/derived-merge.git"
-  }
+  "dependencies": {}
 }
