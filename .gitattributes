@@ -1,4 +1,0 @@
-package-lock.json merge=derived
-yarn.lock merge=derived
-deno.lock merge=derived
-npm-shrinkwrap.json merge=derived
